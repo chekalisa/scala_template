@@ -51,21 +51,21 @@ object Main extends App {
   inputDF.show(5)
 
   // Traitements
-  val groupbyDF = processor.groupby(inputDF)
-  val sumDF     = processor.sum(inputDF)
-  val medianeDF = processor.process(inputDF.copy()) // process() = médiane dans ta logique actuelle
+  //val groupbyDF = processor.groupby(inputDF)
+ //val sumDF     = processor.sum(inputDF)
+ // val medianeDF = processor.process(inputDF.copy()) // process() = médiane dans ta logique actuelle
 
   println("📊 Résultat GroupBy :")
-  groupbyDF.show(5)
+  //groupbyDF.show(5)
   println("📊 Résultat Sum :")
-  sumDF.show(5)
+  //sumDF.show(5)
   println("📊 Résultat Médiane :")
-  medianeDF.show(5)
+  //medianeDF.show(5)
 
   // Sauvegarde
-  writer.write(groupbyDF, s"${DST_PATH}_groupby")
-  writer.write(sumDF,     s"${DST_PATH}_sum")
-  writer.write(medianeDF, s"${DST_PATH}_mediane")
+  //writer.write(groupbyDF, s"${DST_PATH}_groupby")
+  //writer.write(sumDF,     s"${DST_PATH}_sum")
+  //writer.write(medianeDF, s"${DST_PATH}_mediane")
 
   println(s"Export terminé dans : ${DST_PATH}_*")
 }

@@ -1,71 +1,111 @@
 package fr.mosef.scala.template
 
+import fr.mosef.scala.template.job.Job
 import fr.mosef.scala.template.processor.Processor
 import fr.mosef.scala.template.processor.impl.ProcessorImpl
 import fr.mosef.scala.template.reader.Reader
-import fr.mosef.scala.template.reader.impl.ReaderImpl
+import fr.mosef.scala.template.reader.impl.{CSVReader, HiveReader, ParquetReader}
 import fr.mosef.scala.template.writer.Writer
-import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.SparkConf
-import com.globalmentor.apache.hadoop.fs.BareLocalFileSystem
-import org.apache.hadoop.fs.FileSystem
+import fr.mosef.scala.template.writer.impl.{CSVOutputWriter, ParquetOutputWriter, HiveTableWriter}
 
-object Main extends App {
+import org.apache.spark.sql.SparkSession
 
-  val cliArgs = args
+object Main extends App with Job {
 
-  val MASTER_URL  = if (cliArgs.length > 0) cliArgs(0) else "local[1]"
-  val SRC_PATH    = if (cliArgs.length > 1) cliArgs(1) else {
-    println("❌ Chemin source requis."); sys.exit(1)
+  // Récupération des arguments CLI avec des valeurs par défaut
+  val argsList = args
+
+  val masterUrl: String = if (argsList.length > 0) argsList(0) else "local[1]"
+
+  val inputPath: String = if (argsList.length > 1) argsList(1) else {
+    println("⚠️  Aucun chemin d’entrée fourni.")
+    sys.exit(1)
   }
-  val DST_PATH    = if (cliArgs.length > 2) cliArgs(2) else "./output"
-  val GROUP_VAR   = if (cliArgs.length > 3) cliArgs(3) else ""
-  val OP_VAR      = if (cliArgs.length > 4) cliArgs(4) else ""
 
-  // Configuration Spark
-  val conf = new SparkConf()
-    .set("spark.driver.memory", "64M")
-    .set("spark.testing.memory", "471859200")
+  val outputPath: String = if (argsList.length > 2) argsList(2) else "./default/output-writer"
+  val groupColumn: String = if (argsList.length > 3) argsList(3) else "group_key"
+  val targetColumn: String = if (argsList.length > 4) argsList(4) else "field1"
+  val useHive: Boolean = if (argsList.length > 5) argsList(5).toBoolean else false
+  val propertiesPath: String = if (argsList.length > 6) argsList(6) else "./src/main/resources/application.properties"
 
-  implicit val sparkSession: SparkSession = SparkSession.builder()
-    .master(MASTER_URL)
-    .config(conf)
-    .appName("Scala Template")
+  println("=" * 100)
+  println("🔧 Paramètres de l'application")
+  println("=" * 100)
+  println(s"🔗 Spark master : $masterUrl")
+  println(s"📥 Chemin source : $inputPath")
+  println(s"📤 Chemin destination : $outputPath")
+  println(s"🔑 Colonne de regroupement : $groupColumn")
+  println(s"📊 Colonne d'opération : $targetColumn")
+  println(s"📁 Fichier de configuration : $propertiesPath")
+  println(s"🐝 Utilisation de Hive : $useHive")
+  println("=" * 100)
+
+  // Initialisation de Spark
+  val spark = SparkSession
+    .builder()
+    .master(masterUrl)
     .enableHiveSupport()
     .getOrCreate()
 
-  sparkSession.sparkContext.hadoopConfiguration.setClass(
-    "fs.file.impl",
-    classOf[BareLocalFileSystem],
-    classOf[FileSystem]
-  )
+  spark.sparkContext.setLogLevel("ERROR")
 
-  // Pipeline
-  val reader: Reader = new ReaderImpl(sparkSession)
-  val processor: Processor = new ProcessorImpl(GROUP_VAR, OP_VAR)
-  val writer: Writer = new Writer()
+  // Détermination du type de fichier (csv, parquet, etc.)
+  val fileType = inputPath.split("\\.").lastOption.getOrElse("")
 
-  val inputDF: DataFrame = reader.read(SRC_PATH)
+  // Sélection du lecteur en fonction du format et du mode Hive
+  val reader: Reader = if (useHive) {
+    new HiveReader(spark, propertiesPath, fileType)
+  } else {
+    fileType match {
+      case "csv" => new CSVReader(spark, propertiesPath)
+      case "parquet" => new ParquetReader(spark, propertiesPath)
+      case _ =>
+        println(s"❌ Format de fichier non pris en charge : $fileType")
+        sys.exit(1)
+    }
+  }
+  // Création du processeur
+  val processor: Processor = new ProcessorImpl(groupColumn, targetColumn)
 
-  println("📥 Données d'entrée :")
+  // Lecture des données
+  val inputDF = reader.read(inputPath)
+
+  println("\n🧾 Aperçu des données d'entrée")
   inputDF.show(5)
 
-  // Traitements
-  //val groupbyDF = processor.groupby(inputDF)
- //val sumDF     = processor.sum(inputDF)
- // val medianeDF = processor.process(inputDF.copy()) // process() = médiane dans ta logique actuelle
+  // Exécution des traitements
+  val groupedDF = processor.groupby(inputDF)
+  val summedDF = processor.computeSum(inputDF)
+  val stddevDF = processor.computeStdDev(inputDF)
 
-  println("📊 Résultat GroupBy :")
-  //groupbyDF.show(5)
-  println("📊 Résultat Sum :")
-  //sumDF.show(5)
-  println("📊 Résultat Médiane :")
-  //medianeDF.show(5)
+  // Écriture des résultats (fichiers ou Hive selon le mode)
+  if (!useHive) {
+    val dst_path = outputPath
 
-  // Sauvegarde
-  //writer.write(groupbyDF, s"${DST_PATH}_groupby")
-  //writer.write(sumDF,     s"${DST_PATH}_sum")
-  //writer.write(medianeDF, s"${DST_PATH}_mediane")
+    val writer: Writer = fileType match {
+      case "csv" => new CSVOutputWriter(propertiesPath)
+      case "parquet" => new ParquetOutputWriter()
+      case _ => sys.exit(1)
+    }
 
-  println(s"Export terminé dans : ${DST_PATH}_*")
+    println("\n📈 Résultat - GroupBy")
+    groupedDF.show(5)
+
+    println("\n➕ Résultat - Somme")
+    summedDF.show(5)
+
+    println("\n📉 Résultat - Écart-type")
+    stddevDF.show(5)
+
+    writer.write(groupedDF, "overwrite", dst_path + "_groupby")
+    writer.write(summedDF, "overwrite", dst_path + "_sum")
+    writer.write(stddevDF, "overwrite", dst_path + "_stddev")
+
+  } else {
+    // Cas Hive
+    val writer = new HiveTableWriter(spark)
+    writer.writeToTable(groupedDF, "table_groupby")
+    writer.writeToTable(summedDF, "table_sum")
+    writer.writeToTable(stddevDF, "table_stddev")
+  }
 }

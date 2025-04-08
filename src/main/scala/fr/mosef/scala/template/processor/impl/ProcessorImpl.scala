@@ -11,7 +11,10 @@ class ProcessorImpl(groupvar: String, op_var: String) extends Processor {
 
   def groupby(inputDF: DataFrame): DataFrame = {
     val dfNumeric = toNumeric(inputDF, op_var)
-    dfNumeric.groupBy(groupvar).sum(op_var)
+    dfNumeric
+      .filter(col(groupvar).isNotNull) // ⛔ supprime les lignes avec clé null
+      .groupBy(groupvar)
+      .sum(op_var)
   }
 
   def computeSum(inputDF: DataFrame): DataFrame = {

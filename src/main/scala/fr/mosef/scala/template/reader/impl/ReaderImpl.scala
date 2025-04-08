@@ -27,9 +27,9 @@ class CSVReader(spark: SparkSession, configPath: String) extends Reader {
       .option("sep", delimiter)
       .option("header", hasHeader.toString)
       .option("inferSchema", inferSchema)
-      .option("multiLine", true) // ✅ gère les lignes sur plusieurs lignes
-      .option("quote", "\"")     // ✅ gère les champs entourés de guillemets
-      .option("escape", "\"")    // ✅ gère les guillemets à l'intérieur des champs
+      .option("multiLine", true)
+      .option("quote", "\"")
+      .option("escape", "\"")
       .format(format)
       .load(filePath)
 

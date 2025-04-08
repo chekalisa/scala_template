@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>chekalisa</groupId>
     <artifactId>scala_template</artifactId>
-    <version>1.3</version>
+    <version>1.3.1</version>
 
     <properties>
         <encoding>UTF-8</encoding>
